@@ -1,0 +1,16 @@
+[package]
+name = "ftp-web"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/ahaoboy/ftp-web"
+homepage = "https://github.com/ahaoboy/ftp-web"
+authors = ["ahaoboy"]
+license = "MIT"
+description = "ftp-web"
+
+[dependencies]
+suppaftp = "6"
+regex = "1.5"
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+fileinfo = "0.1.1"
