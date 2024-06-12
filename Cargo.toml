@@ -14,3 +14,7 @@ regex = "1.5"
 axum = "0.7"
 tokio = { version = "1", features = ["full"] }
 fileinfo = "0.1.1"
+clap = { version = "4.5.6", features = ["derive"] }
+local-ip-address = { version = "0.6.1" }
+find_port = "0.1.0"
+fast_qr = "0.12.5"
