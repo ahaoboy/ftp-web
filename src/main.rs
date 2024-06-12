@@ -1,16 +1,16 @@
-use axum::extract::{self, State};
-use axum::http::{header, StatusCode};
-use axum::response::{IntoResponse, Redirect};
+use axum::extract::{self};
+use axum::http::header;
+use axum::response::IntoResponse;
+use axum::routing::get;
 use clap::Parser;
 use fast_qr::{QRBuilder, ECL};
 use fileinfo::FileInfo;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use std::{str, vec};
 use suppaftp::FtpStream;
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
+use axum::{response::Html,   Router};
 
-use axum::{response::Html, routing::get, Router};
-// type AppState = Mutex<Arc<FtpStream>>;
 #[derive(Clone)]
 struct AppState {
     ftp: Arc<Mutex<FtpStream>>,
@@ -51,16 +51,23 @@ async fn main() {
         host,
     } = cli.clone();
 
-    let mut ftp_stream = FtpStream::connect(&ftp).unwrap();
-    let _ = ftp_stream.login(name, password).expect("login error");
+    let mut ftp_stream = FtpStream::connect(&ftp).expect("can't connect to ftp server");
+    ftp_stream.login(name, password).expect("login error");
 
     let state = AppState {
         ftp: Arc::new(Mutex::new(ftp_stream)),
     };
     let app = Router::new()
-        .route("/", get(|| async { Redirect::permanent("/ftp/") }))
+        .route("/", get(using_home))
+        .route("/ftp", get(using_home))
         .route("/ftp/*O", get(using_ftp))
         .route("/file/*O", get(using_file))
+        .layer(
+            CorsLayer::new()
+                .allow_headers(AllowHeaders::any())
+                .allow_methods(AllowMethods::any())
+                .allow_origin(AllowOrigin::any()),
+        )
         .with_state(state);
 
     let port = find_port::find_port("127.0.0.1", port).expect("find port error");
@@ -74,8 +81,8 @@ async fn main() {
     let s2 = format!("http://{}:{}/", local_ip, port);
     let s3 = format!("http://{}/{}/", host, port);
     let qrcode = QRBuilder::new(s2.clone()).ecl(ECL::H).build().unwrap();
-    qrcode.print();
     println!("ftp-web:\n{}\n{}\n{}", s1, s2, s3);
+    qrcode.print();
 
     axum::serve(listener, app).await.unwrap();
 }
@@ -86,7 +93,7 @@ async fn using_file(
 ) -> impl IntoResponse {
     let mut ftp = ftp.ftp.lock().unwrap();
     let buf = ftp.retr_as_buffer(&path).unwrap().into_inner();
-    let name = path.split("/").last().unwrap_or("download");
+    let name = path.split('/').last().unwrap_or("download");
     let headers = [(
         header::CONTENT_DISPOSITION,
         format!("attachment; filename=\"{name}\""),
@@ -100,33 +107,39 @@ async fn using_ftp(
 ) -> impl IntoResponse {
     // println!("using_ftp: {:?}", path);
     let html = get_html(&ftp.ftp, &path);
-    return Html::from(html);
+    Html::from(html)
+}
+
+async fn using_home(extract::State(ftp): extract::State<AppState>) -> impl IntoResponse {
+    // println!("using_home:");
+    let html = get_html(&ftp.ftp, "");
+    Html::from(html)
 }
 
 fn get_html(ftp: &Arc<Mutex<FtpStream>>, path: &str) -> String {
     let mut ftp = ftp.lock().unwrap();
 
-    let (list, path) = if let Ok(list) = ftp.list(Some(&path)) {
+    let (list, path) = if let Ok(list) = ftp.list(Some(path)) {
         (list, path)
     } else {
         ((ftp.list(None)).unwrap(), "")
     };
 
     let li_text = list.iter().filter_map(|i| {
-        let info: FileInfo = FileInfo::from_str(&i).ok()?;
+        let info: FileInfo = FileInfo::from_str(i).ok()?;
         let name = &info.name;
         if info.is_dir() {
             return Some(format!("<li><a href='/ftp/{path}/{name}/'>{name}</a></li>",));
         }
-        return Some(format!(
+        Some(format!(
             "<li><a target='_blank' href='/file/{path}/{name}'>{name}</a></li>",
-        ));
+        ))
     });
 
     let li_text = li_text.collect::<Vec<_>>();
     let li_text = li_text.join("\n");
 
-    let path = if path.len() == 0 { "/" } else { path };
+    let path = if path.is_empty() { "/" } else { path };
 
     let html = format!(
         r#"
