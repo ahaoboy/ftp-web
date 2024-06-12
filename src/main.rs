@@ -2,6 +2,7 @@ use axum::extract::{self};
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::routing::get;
+use axum::{response::Html, Router};
 use clap::Parser;
 use fast_qr::{QRBuilder, ECL};
 use fileinfo::FileInfo;
@@ -9,7 +10,6 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use suppaftp::FtpStream;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
-use axum::{response::Html,   Router};
 
 #[derive(Clone)]
 struct AppState {
@@ -39,6 +39,8 @@ struct Cli {
     #[clap()]
     ftp: String,
 }
+static FOLDER_ICON: &str = "📁";
+static FILE_ICON: &str = "📄";
 
 #[tokio::main]
 async fn main() {
@@ -59,7 +61,7 @@ async fn main() {
     };
     let app = Router::new()
         .route("/", get(using_home))
-        .route("/ftp", get(using_home))
+        .route("/ftp/", get(using_home))
         .route("/ftp/*O", get(using_ftp))
         .route("/file/*O", get(using_file))
         .layer(
@@ -68,6 +70,7 @@ async fn main() {
                 .allow_methods(AllowMethods::any())
                 .allow_origin(AllowOrigin::any()),
         )
+        .fallback(using_home)
         .with_state(state);
 
     let port = find_port::find_port("127.0.0.1", port).expect("find port error");
@@ -117,38 +120,64 @@ async fn using_home(extract::State(ftp): extract::State<AppState>) -> impl IntoR
 }
 
 fn get_html(ftp: &Arc<Mutex<FtpStream>>, path: &str) -> String {
+    let path = path.replace("//", "/");
     let mut ftp = ftp.lock().unwrap();
 
-    let (list, path) = if let Ok(list) = ftp.list(Some(path)) {
+    let (list, path) = if let Ok(list) = ftp.list(Some(&path)) {
         (list, path)
     } else {
-        ((ftp.list(None)).unwrap(), "")
+        ((ftp.list(None)).unwrap(), "".into())
     };
 
     let li_text = list.iter().filter_map(|i| {
         let info: FileInfo = FileInfo::from_str(i).ok()?;
         let name = &info.name;
+        let icon: &str = if info.is_dir() {
+            FOLDER_ICON
+        } else {
+            FILE_ICON
+        };
+
         if info.is_dir() {
-            return Some(format!("<li><a href='/ftp/{path}/{name}/'>{name}</a></li>",));
+            return Some(format!(
+                "<li>{icon} <a href='/ftp/{path}/{name}/'>{name}</a></li>",
+            ));
         }
         Some(format!(
-            "<li><a target='_blank' href='/file/{path}/{name}'>{name}</a></li>",
+            "<li>{icon} <a download='{name}' href='/file/{path}/{name}'>{name}</a></li>",
         ))
     });
 
-    let li_text = li_text.collect::<Vec<_>>();
+    let parent_path = path.trim_end_matches('/');
+    let mut parent_path = parent_path.split('/').collect::<Vec<_>>();
+    if parent_path.len() > 1 {
+        parent_path.pop();
+    }
+
+    let parent_path = parent_path.join("/");
+    let parent_dir = format!("<li>{FOLDER_ICON} <a href='/ftp/{parent_path}'>..</a></li>");
+
+    let li_text = vec![parent_dir]
+        .into_iter()
+        .chain(li_text)
+        .collect::<Vec<_>>();
+
     let li_text = li_text.join("\n");
 
-    let path = if path.is_empty() { "/" } else { path };
+    let path = if path.is_empty() { "/".into() } else { path };
 
     let html = format!(
         r#"
-<html><head>
+<html>
+  <head>
     <meta charset='utf-8'>
-      <title>Index of {path}</title></head><body><h1>Index of ${path}</h1>
-    <ul>
-{li_text}
-    </ul>
+    <title>Index of {path}</title>
+  </head>
+    <body>
+      <h1>Index of {path}</h1>
+      <ul>
+        {li_text}
+      </ul>
     </body>
 </html>"#
     );
