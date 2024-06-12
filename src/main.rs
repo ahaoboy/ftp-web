@@ -21,7 +21,7 @@ struct AppState {
 struct Cli {
     /// name
     #[arg(short, long, default_value_t = String::from(""))]
-    name: String,
+    username: String,
 
     /// password
     #[arg(long, short, default_value_t = String::from(""))]
@@ -44,7 +44,7 @@ struct Cli {
 async fn main() {
     let cli = Cli::parse();
     let Cli {
-        name,
+        username,
         password,
         ftp,
         port,
@@ -52,7 +52,7 @@ async fn main() {
     } = cli.clone();
 
     let mut ftp_stream = FtpStream::connect(&ftp).expect("can't connect to ftp server");
-    ftp_stream.login(name, password).expect("login error");
+    ftp_stream.login(username, password).expect("login error");
 
     let state = AppState {
         ftp: Arc::new(Mutex::new(ftp_stream)),
