@@ -1,8 +1,10 @@
-use std::{str::FromStr, sync::{Arc, Mutex}};
 use bytesize::ByteSize;
 use fileinfo::FileInfo;
+use std::{
+    str::FromStr,
+    sync::{Arc, Mutex},
+};
 use suppaftp::FtpStream;
-
 
 pub const HTML_STYLE: &str = r#"
     :root {
@@ -40,7 +42,7 @@ pub const HTML_STYLE: &str = r#"
     }"#;
 pub const DIR_ICON: &str = r#"<svg aria-label="Directory" data-icon="dir" width="20" height="20" viewBox="0 0 512 512" version="1.1" role="img"><path fill="currentColor" d="M464 128H272l-64-64H48C21.49 64 0 85.49 0 112v288c0 26.51 21.49 48 48 48h416c26.51 0 48-21.49 48-48V176c0-26.51-21.49-48-48-48z"></path></svg>"#;
 pub const FILE_ICON: &str = r#"<svg aria-label="File" data-icon="file" width="20" height="20" viewBox="0 0 384 512" version="1.1" role="img"><path d="M369.9 97.9L286 14C277 5 264.8-.1 252.1-.1H48C21.5 0 0 21.5 0 48v416c0 26.5 21.5 48 48 48h288c26.5 0 48-21.5 48-48V131.9c0-12.7-5.1-25-14.1-34zM332.1 128H256V51.9l76.1 76.1zM48 464V48h160v104c0 13.3 10.7 24 24 24h104v288H48z"/></svg>"#;
-// pub const HOME_ICON: &str = r#"<svg aria-hidden="true" data-icon="home" viewBox="0 0 576 512"><path fill="currentColor" d="M280.37 148.26L96 300.11V464a16 16 0 0 0 16 16l112.06-.29a16 16 0 0 0 15.92-16V368a16 16 0 0 1 16-16h64a16 16 0 0 1 16 16v95.64a16 16 0 0 0 16 16.05L464 480a16 16 0 0 0 16-16V300L295.67 148.26a12.19 12.19 0 0 0-15.3 0zM571.6 251.47L488 182.56V44.05a12 12 0 0 0-12-12h-56a12 12 0 0 0-12 12v72.61L318.47 43a48 48 0 0 0-61 0L4.34 251.47a12 12 0 0 0-1.6 16.9l25.5 31A12 12 0 0 0 45.15 301l235.22-193.74a12.19 12.19 0 0 1 15.3 0L530.9 301a12 12 0 0 0 16.9-1.6l25.5-31a12 12 0 0 0-1.7-16.93z"></path></svg>"#;
+pub const HOME_ICON: &str = r#"<svg aria-hidden="true" data-icon="home" viewBox="0 0 576 512"><path fill="currentColor" d="M280.37 148.26L96 300.11V464a16 16 0 0 0 16 16l112.06-.29a16 16 0 0 0 15.92-16V368a16 16 0 0 1 16-16h64a16 16 0 0 1 16 16v95.64a16 16 0 0 0 16 16.05L464 480a16 16 0 0 0 16-16V300L295.67 148.26a12.19 12.19 0 0 0-15.3 0zM571.6 251.47L488 182.56V44.05a12 12 0 0 0-12-12h-56a12 12 0 0 0-12 12v72.61L318.47 43a48 48 0 0 0-61 0L4.34 251.47a12 12 0 0 0-1.6 16.9l25.5 31A12 12 0 0 0 45.15 301l235.22-193.74a12.19 12.19 0 0 1 15.3 0L530.9 301a12 12 0 0 0 16.9-1.6l25.5-31a12 12 0 0 0-1.7-16.93z"></path></svg>"#;
 
 pub fn get_html(ftp: &Arc<Mutex<FtpStream>>, path: &str) -> String {
     let path = path.replace("//", "/");
@@ -92,7 +94,7 @@ pub fn get_html(ftp: &Arc<Mutex<FtpStream>>, path: &str) -> String {
 
     let parent_path = parent_path.join("/");
     let parent_dir = format!(
-    r#"
+        r#"
 <tr>
   <td>{DIR_ICON}</td>
   <td><a href="/ftp/{parent_path}/">..</a></td>
@@ -111,6 +113,26 @@ pub fn get_html(ftp: &Arc<Mutex<FtpStream>>, path: &str) -> String {
 
     let path = if path.is_empty() { "/".into() } else { path };
 
+    fn header_links(path: &str) -> String {
+        let segments = path
+            .trim_start_matches('/')
+            .trim_end_matches('/')
+            .split('/');
+        let mut link = "".to_string();
+        format!(
+            r#"<a href="/">{}</a>{}"#,
+            HOME_ICON,
+            segments
+                .map(|seg| {
+                    link = format!("{link}/{seg}");
+                    format!("/<a href='/ftp/{link}'>{seg}</a>")
+                })
+                .collect::<Vec<_>>()
+                .join("")
+        )
+    }
+
+    let link = header_links(&path);
     let html = format!(
         r#"
 <html>
@@ -125,18 +147,7 @@ pub fn get_html(ftp: &Arc<Mutex<FtpStream>>, path: &str) -> String {
   </head>
   <header>
     <h3>
-      Index of:
-      <a href="/"
-        ><svg
-          aria-hidden="true"
-          data-icon="home"
-          viewBox="0 0 576 512"
-        >
-          <path
-            fill="currentColor"
-            d="M280.37 148.26L96 300.11V464a16 16 0 0 0 16 16l112.06-.29a16 16 0 0 0 15.92-16V368a16 16 0 0 1 16-16h64a16 16 0 0 1 16 16v95.64a16 16 0 0 0 16 16.05L464 480a16 16 0 0 0 16-16V300L295.67 148.26a12.19 12.19 0 0 0-15.3 0zM571.6 251.47L488 182.56V44.05a12 12 0 0 0-12-12h-56a12 12 0 0 0-12 12v72.61L318.47 43a48 48 0 0 0-61 0L4.34 251.47a12 12 0 0 0-1.6 16.9l25.5 31A12 12 0 0 0 45.15 301l235.22-193.74a12.19 12.19 0 0 1 15.3 0L530.9 301a12 12 0 0 0 16.9-1.6l25.5-31a12 12 0 0 0-1.7-16.93z"
-          ></path></svg></a
-      >/<a href="/"></a>
+      Index of: {link}
     </h3>
   </header>
   <hr />
