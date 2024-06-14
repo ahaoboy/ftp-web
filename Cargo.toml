@@ -6,7 +6,7 @@ repository = "https://github.com/ahaoboy/ftp-web"
 homepage = "https://github.com/ahaoboy/ftp-web"
 authors = ["ahaoboy"]
 license = "MIT"
-description = "ftp-web"
+description = "Download ftp files from browser"
 
 [dependencies]
 bytesize ="1.3.0"

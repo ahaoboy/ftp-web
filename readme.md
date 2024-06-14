@@ -1,3 +1,5 @@
+Download ftp files from browser
+
 ## install
 ```bash
 cargo install ftp-web
